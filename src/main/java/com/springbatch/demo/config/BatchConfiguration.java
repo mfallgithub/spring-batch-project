@@ -1,16 +1,22 @@
 package com.springbatch.demo.config;
 
+import com.springbatch.demo.domain.OSProduct;
 import com.springbatch.demo.domain.Product;
 import com.springbatch.demo.domain.ProductFieldSetMapper;
 import com.springbatch.demo.domain.ProductRowMapper;
+import com.springbatch.demo.processor.FilterProductItemProcessor;
+import com.springbatch.demo.processor.TransformProductItemProcessor;
 import com.springbatch.demo.reader.ProductNameItemReader;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
-import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
+import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
@@ -20,11 +26,14 @@ import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor;
 import org.springframework.batch.item.file.transform.DelimitedLineAggregator;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.batch.item.support.CompositeItemProcessor;
+import org.springframework.batch.item.validator.BeanValidatingItemProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -32,14 +41,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Configuration
-@EnableBatchProcessing
 public class BatchConfiguration {
-
-    @Autowired
-    public JobBuilderFactory jobBuilderFactory;
-
-    @Autowired
-    public StepBuilderFactory stepBuilderFactory;
 
     @Autowired
     public DataSource dataSource;
@@ -116,28 +118,83 @@ public class BatchConfiguration {
         fieldExtractor.setNames(new String[]{"productId", "productName", "productCategory", "productPrice"});
 
         lineAggregator.setFieldExtractor(fieldExtractor);
-
         itemWriter.setLineAggregator(lineAggregator);
 
         return itemWriter;
+    }
 
+//    @Bean
+//    public JdbcBatchItemWriter<Product> jdbcBatchItemWriter() {
+//        JdbcBatchItemWriter<Product> itemWriter = new JdbcBatchItemWriter<>();
+//        itemWriter.setDataSource(dataSource);
+//        itemWriter.setSql("insert into product_details_output values (:productId,:productName,:productCategory,:productPrice)");
+//        //itemWriter.setItemPreparedStatementSetter(new ProductItemPreparedStatement());
+//        itemWriter.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>());
+//        return itemWriter;
+//    }
+
+    @Bean
+    public JdbcBatchItemWriter<OSProduct> jdbcBatchItemWriter() {
+        JdbcBatchItemWriter<OSProduct> itemWriter = new JdbcBatchItemWriter<>();
+        itemWriter.setDataSource(dataSource);
+        itemWriter.setSql("insert into os_product_details values (:productId,:productName,:productCategory,:productPrice,:taxPercent,:sku,:shippingRate)");
+        //itemWriter.setItemPreparedStatementSetter(new ProductItemPreparedStatement());
+        itemWriter.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>());
+        return itemWriter;
     }
 
     @Bean
-    public Step step1() throws Exception {
-        return this.stepBuilderFactory.get("chunkBasedStep1")
-                .<Product, Product>chunk(3)
+    public ItemProcessor<Product, Product> filterProductItemProcessor() {
+        return new FilterProductItemProcessor();
+    }
+
+    @Bean
+    public ItemProcessor<Product, OSProduct> transformProductItemProcessor() {
+        return new TransformProductItemProcessor();
+    }
+
+//    @Bean
+//    public ValidatingItemProcessor<Product> validateItemProcessor() {
+//        ValidatingItemProcessor<Product> processor = new ValidatingItemProcessor<>((new ProductValidator()));
+//        processor.setFilter(true);
+//        return processor;
+//    }
+
+    @Bean
+    public BeanValidatingItemProcessor<Product> ValidateItemProcessor() {
+        BeanValidatingItemProcessor<Product> beanValidatingItemProcessor = new BeanValidatingItemProcessor<>();
+        beanValidatingItemProcessor.setFilter(true);
+        return beanValidatingItemProcessor;
+    }
+
+    @Bean
+    public CompositeItemProcessor<Product, OSProduct> itemProcessor() {
+        CompositeItemProcessor<Product, OSProduct> compositeItemProcessor = new CompositeItemProcessor<>();
+        List itemProcessors = new ArrayList<>();
+        itemProcessors.add(ValidateItemProcessor());
+        itemProcessors.add(filterProductItemProcessor());
+        itemProcessors.add(transformProductItemProcessor());
+        compositeItemProcessor.setDelegates(itemProcessors);
+        return compositeItemProcessor;
+    }
+
+    @Bean
+    public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+        return new StepBuilder("chunkBasedStep1", jobRepository)
+                .<Product, OSProduct>chunk(3, transactionManager)
                 //.reader(flatFileItemReader())
                 //.reader(jdbcCursorItemReader())
                 .reader(jdbcPagingItemReader())
-                .writer(flatFileItemWriter())
+                .processor(itemProcessor())
+                //.writer(flatFileItemWriter())
+                .writer(jdbcBatchItemWriter())
                 .build();
     }
 
     @Bean
-    public Job firstJob() throws Exception {
-        return this.jobBuilderFactory.get("job1")
-                .start(step1())
+    public Job firstJob(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+        return new JobBuilder("job1", jobRepository)
+                .start(step1(jobRepository, transactionManager))
                 .build();
 
     }
