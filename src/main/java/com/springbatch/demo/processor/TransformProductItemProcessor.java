@@ -17,6 +17,9 @@ public class TransformProductItemProcessor implements ItemProcessor<Product, OSP
         osProduct.setTaxPercent(product.getProductCategory().equals("Sports Accessories") ? 5 : 18);
         osProduct.setSku(product.getProductCategory().substring(0, 3) + product.getProductId());
         osProduct.setShippingRate(product.getProductPrice() < 1000 ? 75 : 0);
+//        if (product.getProductPrice()==500) {
+//            throw new Exception("Test Exception");
+//        }
         return osProduct;
     }
 }

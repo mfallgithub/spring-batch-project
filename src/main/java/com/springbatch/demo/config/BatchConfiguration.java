@@ -4,6 +4,10 @@ import com.springbatch.demo.domain.OSProduct;
 import com.springbatch.demo.domain.Product;
 import com.springbatch.demo.domain.ProductFieldSetMapper;
 import com.springbatch.demo.domain.ProductRowMapper;
+import com.springbatch.demo.listener.MyChunkListener;
+import com.springbatch.demo.listener.MyItemProcessListener;
+import com.springbatch.demo.listener.MyItemReadListener;
+import com.springbatch.demo.listener.MyItemWriteListener;
 import com.springbatch.demo.processor.FilterProductItemProcessor;
 import com.springbatch.demo.processor.TransformProductItemProcessor;
 import com.springbatch.demo.reader.ProductNameItemReader;
@@ -179,22 +183,43 @@ public class BatchConfiguration {
     }
 
     @Bean
+    public MyChunkListener myChunkListener() {
+        return new MyChunkListener();
+    }
+
+    @Bean
+    public MyItemReadListener myItemReadListener() {
+        return new MyItemReadListener();
+    }
+
+    @Bean
+    public MyItemProcessListener myItemProcessListener() {
+        return new MyItemProcessListener();
+    }
+
+    @Bean
+    public MyItemWriteListener myItemWriteListener() {
+        return new MyItemWriteListener();
+    }
+
+    @Bean
     public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
         return new StepBuilder("chunkBasedStep1", jobRepository)
                 .<Product, OSProduct>chunk(3, transactionManager)
-                //.reader(flatFileItemReader())
-                //.reader(jdbcCursorItemReader())
                 .reader(jdbcPagingItemReader())
                 .processor(itemProcessor())
-                //.writer(flatFileItemWriter())
                 .writer(jdbcBatchItemWriter())
+                .listener(myChunkListener())
+                .listener(myItemReadListener())
+                .listener(myItemProcessListener())
+                .listener(myItemWriteListener())
                 .build();
     }
 
     @Bean
-    public Job firstJob(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+    public Job firstJob(JobRepository jobRepository, Step step1) throws Exception {
         return new JobBuilder("job1", jobRepository)
-                .start(step1(jobRepository, transactionManager))
+                .start(step1)
                 .build();
 
     }
