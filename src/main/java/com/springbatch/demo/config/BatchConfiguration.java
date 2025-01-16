@@ -4,10 +4,7 @@ import com.springbatch.demo.domain.OSProduct;
 import com.springbatch.demo.domain.Product;
 import com.springbatch.demo.domain.ProductFieldSetMapper;
 import com.springbatch.demo.domain.ProductRowMapper;
-import com.springbatch.demo.listener.MyChunkListener;
-import com.springbatch.demo.listener.MyItemProcessListener;
-import com.springbatch.demo.listener.MyItemReadListener;
-import com.springbatch.demo.listener.MyItemWriteListener;
+import com.springbatch.demo.listener.*;
 import com.springbatch.demo.processor.FilterProductItemProcessor;
 import com.springbatch.demo.processor.TransformProductItemProcessor;
 import com.springbatch.demo.reader.ProductNameItemReader;
@@ -26,12 +23,14 @@ import org.springframework.batch.item.database.JdbcPagingItemReader;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.FlatFileItemWriter;
+import org.springframework.batch.item.file.FlatFileParseException;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor;
 import org.springframework.batch.item.file.transform.DelimitedLineAggregator;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.support.CompositeItemProcessor;
 import org.springframework.batch.item.validator.BeanValidatingItemProcessor;
+import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -167,7 +166,7 @@ public class BatchConfiguration {
     @Bean
     public BeanValidatingItemProcessor<Product> ValidateItemProcessor() {
         BeanValidatingItemProcessor<Product> beanValidatingItemProcessor = new BeanValidatingItemProcessor<>();
-        beanValidatingItemProcessor.setFilter(true);
+        //beanValidatingItemProcessor.setFilter(true);
         return beanValidatingItemProcessor;
     }
 
@@ -203,16 +202,26 @@ public class BatchConfiguration {
     }
 
     @Bean
+    public MySkipListener mySkipListener() {
+        return new MySkipListener();
+    }
+
+    @Bean
     public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
         return new StepBuilder("chunkBasedStep1", jobRepository)
                 .<Product, OSProduct>chunk(3, transactionManager)
-                .reader(jdbcPagingItemReader())
+                .reader(flatFileItemReader())
                 .processor(itemProcessor())
                 .writer(jdbcBatchItemWriter())
-                .listener(myChunkListener())
-                .listener(myItemReadListener())
-                .listener(myItemProcessListener())
-                .listener(myItemWriteListener())
+                .faultTolerant()
+                .skip(ValidationException.class)
+                .skip(FlatFileParseException.class)
+                .skipLimit(3)
+                .listener(mySkipListener())
+//                .listener(myChunkListener())
+//                .listener(myItemReadListener())
+//                .listener(myItemProcessListener())
+//                .listener(myItemWriteListener())
                 .build();
     }
 

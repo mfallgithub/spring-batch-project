@@ -8,7 +8,7 @@ public class TransformProductItemProcessor implements ItemProcessor<Product, OSP
 
     @Override
     public OSProduct process(Product product) throws Exception {
-        System.out.println("transformProductItemProcessor() executed");
+        System.out.println("transformProductItemProcessor() executed for product" + product.getProductId());
         OSProduct osProduct = new OSProduct();
         osProduct.setProductId(product.getProductId());
         osProduct.setProductName(product.getProductName());
