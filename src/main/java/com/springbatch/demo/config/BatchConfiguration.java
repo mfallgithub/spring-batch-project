@@ -4,10 +4,12 @@ import com.springbatch.demo.domain.OSProduct;
 import com.springbatch.demo.domain.Product;
 import com.springbatch.demo.domain.ProductFieldSetMapper;
 import com.springbatch.demo.domain.ProductRowMapper;
+import com.springbatch.demo.exception.MyException;
 import com.springbatch.demo.listener.*;
 import com.springbatch.demo.processor.FilterProductItemProcessor;
 import com.springbatch.demo.processor.TransformProductItemProcessor;
 import com.springbatch.demo.reader.ProductNameItemReader;
+import com.springbatch.demo.skippolicy.MySkipPolicy;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -207,6 +209,11 @@ public class BatchConfiguration {
     }
 
     @Bean
+    public MySkipPolicy mySkipPolicy(){
+        return new MySkipPolicy();
+    }
+
+    @Bean
     public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
         return new StepBuilder("chunkBasedStep1", jobRepository)
                 .<Product, OSProduct>chunk(3, transactionManager)
@@ -214,11 +221,10 @@ public class BatchConfiguration {
                 .processor(itemProcessor())
                 .writer(jdbcBatchItemWriter())
                 .faultTolerant()
-                .skip(ValidationException.class)
-                .skip(FlatFileParseException.class)
-                .skipLimit(3)
+                .retry(MyException.class)
+                .retryLimit(4)
                 .listener(mySkipListener())
-//                .listener(myChunkListener())
+               .listener(myChunkListener())
 //                .listener(myItemReadListener())
 //                .listener(myItemProcessListener())
 //                .listener(myItemWriteListener())
